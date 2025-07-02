@@ -406,11 +406,12 @@ class TrainingDataProcessor:
 class GoogleSheetsConnector:
     """Enhanced Google Sheets connector with better error handling"""
     
-    def __init__(self, credentials_dict, spreadsheet_url):
+    def __init__(self, credentials_dict, spreadsheet_url, show_status=True):
         self.credentials_dict = credentials_dict
         self.spreadsheet_url = spreadsheet_url
         self.client = None
         self.worksheet = None
+        self.show_status = show_status
         
     def connect(self):
         """Establish connection to Google Sheets"""
@@ -530,11 +531,11 @@ class GoogleSheetsConnector:
                         all_data.append(exercise_data)
                 
                 exercises_this_week = len([d for d in all_data if d['week'] == week_num])
-                if exercises_this_week > 0:
+                if exercises_this_week > 0 and self.show_status:
                     st.success(f"✅ Successfully read {exercises_this_week} exercises from {sheet_name}")
                         
             except Exception as e:
-                if "does not exist" not in str(e):  # Don't show errors for missing weeks
+                if "does not exist" not in str(e) and self.show_status:  # Don't show errors for missing weeks
                     st.warning(f"Could not read {sheet_name}: {str(e)}")
                 
         return all_data
@@ -772,28 +773,60 @@ def display_deployment_info():
 def main():
     """Enhanced main Streamlit application"""
     
+    # Initialize presentation mode in session state
+    if 'presentation_mode' not in st.session_state:
+        st.session_state.presentation_mode = True
+    
     # Header
     st.markdown('<h1 class="dashboard-header">🏋️ Adaptive Training Analytics Dashboard</h1>', unsafe_allow_html=True)
+    
+    # Business presentation welcome message
+    if st.session_state.presentation_mode:
+        st.markdown("""
+            <div class="deployment-info">
+                <h3>🚀 Professional Training Analytics Platform</h3>
+                <p><strong>Real-time insights powered by advanced algorithms</strong></p>
+                <p>📊 <strong>Live Data Visualization</strong> • 🧠 <strong>AI-Powered Recommendations</strong> • 📈 <strong>Performance Tracking</strong></p>
+                <p>Use the filters in the sidebar to explore different aspects of the training program.</p>
+            </div>
+        """, unsafe_allow_html=True)
     
     # Display deployment info if applicable
     display_deployment_info()
     
-    # Sidebar for configuration
+    # Sidebar with presentation mode toggle
     with st.sidebar:
-        st.markdown("### ⚙️ Dashboard Configuration")
+        # Presentation mode toggle at the top
+        st.session_state.presentation_mode = st.toggle("🎯 Presentation Mode", 
+                                                       value=st.session_state.presentation_mode, 
+                                                       help="Hide technical options for clean business presentation")
         
-        # Data source selection
-        data_source = st.radio(
-            "Select Data Source:",
-            ["Sample Data (Demo)", "Google Sheets (Live)"],
-            help="Choose between demo data or your live Google Sheets"
-        )
+        if not st.session_state.presentation_mode:
+            st.markdown("### ⚙️ Technical Configuration")
+            
+            # Data source selection
+            data_source = st.radio(
+                "Select Data Source:",
+                ["Sample Data (Demo)", "Google Sheets (Live)"],
+                help="Choose between demo data or your live Google Sheets"
+            )
+            
+            if data_source == "Google Sheets (Live)":
+                sheets_url = create_connection_interface()
+        else:
+            # Auto-select appropriate data source for presentation
+            if 'connected' in st.session_state and st.session_state['connected']:
+                data_source = "Google Sheets (Live)"
+                sheets_url = None
+            else:
+                data_source = "Sample Data (Demo)"
+                sheets_url = None
         
-        if data_source == "Google Sheets (Live)":
-            sheets_url = create_connection_interface()
-        
-        # Enhanced Filters section
-        st.markdown("#### 🎛️ Advanced Filters")
+        # Enhanced Filters section (always visible but clean in presentation mode)
+        if st.session_state.presentation_mode:
+            st.markdown("### 🎛️ Training Filters")
+        else:
+            st.markdown("#### 🎛️ Advanced Filters")
         
         # Week range filter
         week_range = st.slider(
@@ -818,34 +851,58 @@ def main():
             help="Filter by specific muscle groups"
         )
         
-        # Volume threshold filter
-        min_volume = st.slider(
-            "Minimum Exercise Volume:",
-            min_value=0,
-            max_value=100,
-            value=0,
-            step=5,
-            help="Filter exercises below this volume"
-        )
-        
-        # Advanced options
-        st.markdown("#### 🔧 Advanced Options")
-        
-        show_trends = st.checkbox("📈 Show Trend Lines", value=True)
-        show_insights = st.checkbox("🧠 Show AI Insights", value=True)
-        debug_mode = st.checkbox("🔍 Debug Mode", help="Show technical details")
-        
-        # Refresh data button
-        if st.button("🔄 Refresh Data"):
-            st.cache_data.clear()
-            st.rerun()
+        if not st.session_state.presentation_mode:
+            # Volume threshold filter (hidden in presentation mode)
+            min_volume = st.slider(
+                "Minimum Exercise Volume:",
+                min_value=0,
+                max_value=100,
+                value=0,
+                step=5,
+                help="Filter exercises below this volume"
+            )
+            
+            # Advanced options
+            st.markdown("#### 🔧 Advanced Options")
+            
+            show_trends = st.checkbox("📈 Show Trend Lines", value=True)
+            show_insights = st.checkbox("🧠 Show AI Insights", value=True)
+            debug_mode = st.checkbox("🔍 Debug Mode", help="Show technical details")
+            
+            # Refresh data button
+            if st.button("🔄 Refresh Data"):
+                st.cache_data.clear()
+                st.rerun()
+        else:
+            # Set defaults for presentation mode
+            min_volume = 0
+            show_trends = True
+            show_insights = True
+            debug_mode = False
+            
+            # Add business-focused info
+            st.markdown("---")
+            st.markdown("""
+                ### 💼 Business Dashboard
+                **Real-time training analytics**
+                - 📊 Live data visualization
+                - 🧠 AI-powered insights
+                - 📈 Progress tracking
+                - ⚖️ Balance analysis
+                """)
+            
+            if data_source == "Sample Data (Demo)":
+                st.info("🎯 **Demo Mode**: Showing sample training data to demonstrate capabilities.")
+            else:
+                st.success("✅ **Live Data**: Connected to real training program.")
     
     # Main content area
     try:
         # Load data based on source
         if data_source == "Sample Data (Demo)":
             data = load_sample_data()
-            st.info("📋 Using sample data for demonstration. Connect to Google Sheets for live data.")
+            if not st.session_state.presentation_mode:
+                st.info("📋 Using sample data for demonstration. Connect to Google Sheets for live data.")
         else:
             if 'connected' in st.session_state and st.session_state['connected']:
                 with st.spinner("Loading data from Google Sheets..."):
@@ -868,14 +925,19 @@ def main():
                     
                     data = st.session_state['connector'].extract_training_data()
                 if not data:
-                    st.warning("No data found in Google Sheets")
+                    if not st.session_state.presentation_mode:
+                        st.warning("No data found in Google Sheets")
                     data = load_sample_data()
             else:
-                st.warning("Please connect to Google Sheets first")
+                if not st.session_state.presentation_mode:
+                    st.warning("Please connect to Google Sheets first")
                 data = []
         
         if not data:
-            st.error("No training data available")
+            if st.session_state.presentation_mode:
+                st.info("🎯 **Demo Mode**: Switch to 'Sample Data' in the sidebar to explore the dashboard capabilities.")
+            else:
+                st.error("No training data available")
             return
         
         # Filter data by week range and other criteria
@@ -893,7 +955,10 @@ def main():
         processor = TrainingDataProcessor(filtered_data)
         
         if processor.df.empty:
-            st.warning("No data matches your current filters")
+            if st.session_state.presentation_mode:
+                st.info("🎛️ **No data matches current filters.** Try adjusting the filters in the sidebar.")
+            else:
+                st.warning("No data matches your current filters")
             return
         
         # Enhanced Key metrics row
@@ -1071,10 +1136,13 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             )
             
     except Exception as e:
-        st.error(f"An error occurred: {str(e)}")
-        if debug_mode:
-            st.exception(e)
-        st.info("Please check your data source and try again.")
+        if st.session_state.presentation_mode:
+            st.error("Unable to load data. Please try refreshing the page.")
+        else:
+            st.error(f"An error occurred: {str(e)}")
+            if debug_mode:
+                st.exception(e)
+            st.info("Please check your data source and try again.")
 
 if __name__ == "__main__":
     main()
